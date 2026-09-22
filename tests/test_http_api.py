@@ -173,6 +173,55 @@ def test_trajectory_peak_sample_exactly_wmax(client) -> None:  # type: ignore[no
     assert body["samples"][1]["w_cubic"] == w_max
 
 
+@pytest.mark.parametrize(
+    ("w_max", "rtt", "c"),
+    [
+        # 高 BDP：立方分支主导；系数取小/大一倍以上/非标值
+        (100.0, 1.0, 0.1),
+        (100.0, 1.0, 0.8),
+        (120.0, 0.2, 2.5),
+        # 低 BDP：非默认系数下线性分支仍可能接管，分支也必须逐点一致
+        (10.0, 0.01, 0.8),
+        (10.0, 0.01, 1.7),
+    ],
+)
+def test_trajectory_matches_single_point_for_non_default_c(
+    client, w_max, rtt, c  # type: ignore[no-untyped-def]
+) -> None:
+    """非默认立方系数下，轨迹每个采样点必须与单点接口逐字段完全一致。
+
+    回归用例：轨迹顶层 K 用的是请求里的 C，而逐点求值若偷偷落回
+    默认 C=0.4，则同一时刻两接口的窗口/分支会对不上，且 t=K 采样点
+    不会落在峰值。这里连同顶层 K 与峰值锚定一起卡死。
+    """
+    assert c != 0.4  # 本用例只允许非默认系数
+    k = kappa(w_max, c)
+    times = [0.0, 0.25 * k, 0.5 * k, k, 1.25 * k, 2.0 * k]
+
+    traj = client.post(
+        "/api/v3/trajectory",
+        json={"w_max": w_max, "rtt": rtt, "c": c, "times": times},
+    )
+    assert traj.status_code == 200
+    traj_body = traj.json()
+
+    # 顶层报的回到峰值时间必须就是传入系数对应的 K
+    assert traj_body["c"] == c
+    assert traj_body["k"] == k
+
+    fields = ("w_cubic", "w_tcp", "w", "branch", "tcp_friendly", "at_peak")
+    for t, sample in zip(times, traj_body["samples"]):
+        single = _eval(client, w_max=w_max, rtt=rtt, t=t, c=c).json()
+        assert sample["t"] == t
+        for field in fields:
+            assert sample[field] == single[field], (c, t, field)
+
+    # 用传入系数算出的 K 时刻，轨迹采样点必须精确回到峰值并标记 at_peak
+    peak_sample = traj_body["samples"][times.index(k)]
+    assert peak_sample["at_peak"] is True
+    assert peak_sample["w_cubic"] == w_max
+
+
 def test_trajectory_requires_increasing_times(client) -> None:  # type: ignore[no-untyped-def]
     resp = client.post(
         "/api/v3/trajectory",

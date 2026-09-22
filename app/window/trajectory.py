@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..config import DEFAULT_C
 from .kernel import evaluate, is_fast_convergence, kappa
 from .validation import validate_inputs, validate_sample_times
 
@@ -17,7 +18,7 @@ def run_trajectory(
     w_max: float,
     rtt: float,
     *,
-    c: float = 0.4,
+    c: float = DEFAULT_C,
     w_last_max: float | None = None,
 ) -> dict[str, Any]:
     """计算整条轨迹。
@@ -30,7 +31,7 @@ def run_trajectory(
 
     k = kappa(float(w_max), float(c))
     samples = [
-        evaluate(t, w_max, rtt, w_last_max=w_last_max) for t in times
+        evaluate(t, w_max, rtt, c=c, w_last_max=w_last_max) for t in times
     ]
 
     return {
