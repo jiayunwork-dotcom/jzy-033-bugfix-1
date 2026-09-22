@@ -163,6 +163,65 @@ def test_trajectory_matches_single_point_for_every_sample(client) -> None:  # ty
         assert {"w_cubic", "w_tcp", "w", "branch"} <= set(sample)
 
 
+def test_non_default_c_trajectory_matches_single_point_for_every_sample(
+    client,
+) -> None:  # type: ignore[no-untyped-def]
+    # 非默认 C 时，轨迹采样必须逐点走同一套系数；不能只让顶层 K 用传入
+    # C、采样点内部退回 DEFAULT_C。这里的 rtt 还会让最后一个采样点的
+    # CUBIC/TCP 分支随 C 改变，从而同时卡住窗口值和分支不一致。
+    w_max, rtt, custom_c = 100.0, 0.211, 0.8
+    k = kappa(w_max, custom_c)
+    times = [
+        0.0,
+        0.25 * k,
+        0.5 * k,
+        0.75 * k,
+        k,
+        1.25 * k,
+        1.5 * k,
+        2.0 * k,
+    ]
+
+    traj = client.post(
+        "/api/v3/trajectory",
+        json={
+            "w_max": w_max,
+            "rtt": rtt,
+            "c": custom_c,
+            "times": times,
+        },
+    )
+    assert traj.status_code == 200
+    traj_body = traj.json()
+    assert traj_body["c"] == custom_c
+    assert traj_body["k"] == k
+
+    fields = (
+        "w_cubic",
+        "w_tcp",
+        "w",
+        "branch",
+        "tcp_friendly",
+        "at_peak",
+        "w_reduced",
+    )
+    for t, sample in zip(times, traj_body["samples"]):
+        single = _eval(
+            client,
+            w_max=w_max,
+            rtt=rtt,
+            c=custom_c,
+            t=t,
+        ).json()
+        assert sample["t"] == t
+        for field in fields:
+            assert sample[field] == single[field], (t, field)
+
+    peak_sample = traj_body["samples"][4]
+    assert peak_sample["at_peak"] is True
+    assert peak_sample["w_cubic"] == w_max
+
+
 def test_trajectory_peak_sample_exactly_wmax(client) -> None:  # type: ignore[no-untyped-def]
     w_max = 64.0
     k = kappa(w_max)

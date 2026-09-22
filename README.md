@@ -54,7 +54,7 @@ app/
     ├── kernel.py          # 窗口数学内核（纯函数：K、立方/线性窗口、选取）
     ├── validation.py      # 入参校验（先挡后算）
     └── trajectory.py      # 轨迹推进（逐点调用同一个内核函数）
-tests/                     # 自动化测试（48 个用例）
+tests/                     # 自动化测试（49 个用例）
 Dockerfile                 # python:3.12-slim 一键构建启动
 docker-compose.yml
 ```
@@ -158,7 +158,7 @@ curl -sX POST localhost:8000/api/v3/trajectory \
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest                 # 48 个用例
+pytest                 # 49 个用例
 uvicorn app.main:app --reload
 ```
 
